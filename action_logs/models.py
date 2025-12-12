@@ -162,15 +162,8 @@ class LoggedModel(models.Model):
             ip_address=ip_address,
             user_agent=user_agent
         )
-    
-    # action_logs/models.py (продовження)
 
 class Blog(LoggedModel):
-    """
-    Тестова модель для демонстрації логування.
-    Наслідує LoggedModel для автоматичного логування.
-    """
-    
     title = models.CharField(
         max_length=200,
         verbose_name='Заголовок'
@@ -217,13 +210,10 @@ class Blog(LoggedModel):
         return self.title
     
     def save(self, *args, **kwargs):
-        """Перевизначення save для логування."""
         is_new = self.pk is None
         
-        # Викликаємо оригінальний save
         super().save(*args, **kwargs)
         
-        # Логуємо створення/оновлення (в реальному проекті через сигнали)
         if is_new:
             self.log_action(
                 user=self.author,
@@ -238,7 +228,6 @@ class Blog(LoggedModel):
             )
     
     def delete(self, *args, **kwargs):
-        """Логування видалення."""
         self.log_action(
             user=self.author,
             action_type='delete',
