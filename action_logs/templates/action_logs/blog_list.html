@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><title>Blogs</title></head>
+<body>
+    <h1>Blog List View (CBV)</h1>
+    
+    {% for blog in blogs %}
+        <p>{{ blog.title }} by {{ blog.author.username }}</p>
+    {% empty %}
+        <p>No blogs yet</p>
+    {% endfor %}
+</body>
+</html>

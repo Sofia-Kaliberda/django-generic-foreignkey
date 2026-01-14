@@ -184,9 +184,7 @@ class UserProfileAdmin(admin.ModelAdmin):
     readonly_fields = ['social_links_display']
     fieldsets = (
         ('Основна інформація', {'fields': ('user', 'bio', 'avatar')}),
-        ('Контакти', {'fields': ('website', 'location', 'birth_date')}),
-        ('Соціальні мережі', {'fields': ('social_links_display',), 'classes': ('collapse',)}),
-    )
+)
     inlines = [ActionLogInline]
     
     def social_links_display(self, obj):
