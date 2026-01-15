@@ -6,34 +6,36 @@ from django.utils.decorators import method_decorator
 from .models import ActionLog, Blog, Comment, UserProfile
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
+from .mixins import (
+    OwnerRequiredMixin, AutoAuthorMixin, QueryFilterMixin, 
+    JSONResponseMixin, PublicPrivateMixin, EnhancedPaginationMixin,
+    RelatedObjectsMixin, ObjectLogsMixin, ActionLoggingMixin
+)
 
-
-class ActionLogDetailView(LoginRequiredMixin, DetailView):
-    model = ActionLog
-    template_name = 'action_logs/log_detail.html'
-    context_object_name = 'log'
-
-    def get_object(self):
-        return get_object_or_404(ActionLog, id=self.kwargs['pk'])
-
-
-class ActionLogListView(LoginRequiredMixin, ListView):
+class ActionLogListView(LoginRequiredMixin, QueryFilterMixin, EnhancedPaginationMixin, ListView):
     model = ActionLog
     template_name = 'action_logs/log_list.html'
     context_object_name = 'logs'
     paginate_by = 20
+    
+    filter_fields = ['user__id', 'action_type']
+    search_fields = ['action_type', 'additional_data']
+    date_range_field = 'timestamp'
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        user_id = self.request.GET.get('user_id')
-        action_type = self.request.GET.get('action_type')
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['action_types'] = ActionLog.ACTION_TYPES
+        context['users'] = User.objects.all()[:10]
+        return context
 
-        if user_id:
-            queryset = queryset.filter(user__id=user_id)
-        if action_type:
-            queryset = queryset.filter(action_type=action_type)
-
-        return queryset
+class BlogListView(PublicPrivateMixin, EnhancedPaginationMixin, ListView):
+    model = Blog
+    template_name = 'action_logs/blog_list.html'
+    context_object_name = 'blogs'
+    paginate_by = 10
+    
+    public_field = 'is_published'
+    show_all_to_staff = True
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -42,23 +44,17 @@ class ActionLogListView(LoginRequiredMixin, ListView):
         return context
 
 
-class BlogListView(ListView):
-    model = Blog
-    template_name = 'action_logs/blog_list.html'
-    context_object_name = 'blogs'
-    paginate_by = 10
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        if not self.request.user.is_authenticated:
-            queryset = queryset.filter(is_published=True)
-        return queryset
-
-
-class BlogDetailView(DetailView):
+class BlogDetailView(RelatedObjectsMixin, ObjectLogsMixin, DetailView):
     model = Blog
     template_name = 'action_logs/blog_detail.html'
     context_object_name = 'blog'
+
+    related_objects = {
+        'comments': lambda obj: obj.comments.filter(is_active=True)
+    }
+
+    logs_limit = 5
+    include_logs = True
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -67,53 +63,36 @@ class BlogDetailView(DetailView):
         return context
 
 
-class BlogCreateView(LoginRequiredMixin, CreateView):
+class BlogCreateView(LoginRequiredMixin, AutoAuthorMixin, ActionLoggingMixin, CreateView):
+    model = Blog
+    template_name = 'action_logs/blog_form.html'
+    fields = ['title', 'content', 'is_published', 'tags']
+    success_url = reverse_lazy('blog_list')
+    action_type = 'create'
+
+class BlogUpdateView(LoginRequiredMixin, OwnerRequiredMixin, UpdateView):
     model = Blog
     template_name = 'action_logs/blog_form.html'
     fields = ['title', 'content', 'is_published', 'tags']
     success_url = reverse_lazy('blog_list')
 
-    def form_valid(self, form):
-        form.instance.author = self.request.user
-        return super().form_valid(form)
 
-
-class BlogUpdateView(LoginRequiredMixin, UpdateView):
-    model = Blog
-    template_name = 'action_logs/blog_form.html'
-    fields = ['title', 'content', 'is_published', 'tags']
-    success_url = reverse_lazy('blog_list')
-
-    def dispatch(self, request, *args, **kwargs):
-        blog = self.get_object()
-        if blog.author != request.user:
-            return self.handle_no_permission()
-        return super().dispatch(request, *args, **kwargs)
-
-
-class BlogDeleteView(LoginRequiredMixin, DeleteView):
+class BlogDeleteView(LoginRequiredMixin, OwnerRequiredMixin, DeleteView):
     model = Blog
     template_name = 'action_logs/blog_confirm_delete.html'
     success_url = reverse_lazy('blog_list')
 
-    def dispatch(self, request, *args, **kwargs):
-        blog = self.get_object()
-        if blog.author != request.user:
-            return self.handle_no_permission()
-        return super().dispatch(request, *args, **kwargs)
-
-
-class CommentCreateView(LoginRequiredMixin, CreateView):
+class CommentCreateView(LoginRequiredMixin, AutoAuthorMixin, CreateView):
     model = Comment
     template_name = 'action_logs/comment_form.html'
     fields = ['text']
 
     def get_success_url(self):
         return reverse_lazy('blog_detail', kwargs={'pk': self.object.blog.pk})
+    
 
     def form_valid(self, form):
         blog = get_object_or_404(Blog, pk=self.kwargs['blog_pk'])
-        form.instance.author = self.request.user
         form.instance.blog = blog
         return super().form_valid(form)
 
@@ -160,3 +139,11 @@ class DashboardView(LoginRequiredMixin, ListView):
         context['activity_count'] = ActionLog.objects.filter(user=user).count()
 
         return context
+    
+class ActionLogDetailView(LoginRequiredMixin, DetailView):
+    model = ActionLog
+    template_name = 'action_logs/log_detail.html'
+    context_object_name = 'log'
+
+    def get_object(self):
+        return get_object_or_404(ActionLog, id=self.kwargs['pk'])
